@@ -482,7 +482,6 @@ export class LocalIntervalCollection<TInterval extends ISerializableInterval> {
         end: number,
         intervalType: MergeTree.IntervalType,
         props: MergeTree.PropertySet,
-        local: boolean = true,
     ) {
         const interval: TInterval = this.createInterval(start, end, intervalType);
         if (interval) {
@@ -490,9 +489,7 @@ export class LocalIntervalCollection<TInterval extends ISerializableInterval> {
             if (this.label && (this.label.length > 0)) {
                 interval.properties[MergeTree.reservedRangeLabelsKey] = [this.label];
             }
-            if (local) {
-                interval.properties[reservedIntervalIdKey] = uuid();
-            }
+            interval.properties[reservedIntervalIdKey] = interval.properties[reservedIntervalIdKey] ?? uuid();
             this.intervalTree.put(interval, this.conflictResolver);
             this.endIntervalTree.put(interval, interval, this.endConflictResolver);
         }
@@ -685,8 +682,7 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
                     serializedInterval.start,
                     serializedInterval.end,
                     serializedInterval.intervalType,
-                    serializedInterval.properties,
-                    false);
+                    serializedInterval.properties);
             }
         }
     }
@@ -715,6 +711,10 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         this.localCollection.gatherIterationResults(results, iteratesForward, start, end);
     }
 
+    public getIntervalById(id) {
+        return this.localCollection.getIntervalById(id);
+    }
+
     public previousInterval(pos: number): TInterval {
         return this.localCollection.previousInterval(pos);
     }
@@ -735,7 +735,7 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         intervalType: MergeTree.IntervalType,
         props?: MergeTree.PropertySet,
     ) {
-        const interval: TInterval = this.localCollection.addInterval(start, end, intervalType, props, true);
+        const interval: TInterval = this.localCollection.addInterval(start, end, intervalType, props);
 
         if (interval) {
             const serializedInterval = {
@@ -754,18 +754,6 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         return interval;
     }
 
-    public delete(
-        start: number,
-        end: number,
-        local: boolean = true,
-        op?: ISequencedDocumentMessage) {
-        for (let interval: TInterval | undefined = this.localCollection.findInterval(start, end);
-                interval;
-                interval = this.localCollection.findInterval(start, end)) {
-            this.deleteExistingInterval(interval, local, op);
-        }
-    }
-
     // TODO: error cases
     public addInternal(
         serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage): TInterval {
@@ -773,14 +761,13 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
             serializedInterval.start,
             serializedInterval.end,
             serializedInterval.intervalType,
-            serializedInterval.properties,
-            false);
+            serializedInterval.properties);
 
         if (interval) {
             // Local ops get submitted to the server. Remote ops have the deserializer run.
             if (local) {
                 // Review: Is this case possible?
-                this.emitter.emit("delete", undefined, serializedInterval);
+                this.emitter.emit("add", undefined, serializedInterval);
             } else {
                 if (this.onDeserialize) {
                     this.onDeserialize(interval);
@@ -793,9 +780,47 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         return interval;
     }
 
+    public delete(start: number, end: number) {
+        for (let interval: TInterval | undefined = this.localCollection.findInterval(start, end);
+                interval;
+                interval = this.localCollection.findInterval(start, end)) {
+            this.deleteExistingInterval(interval, true, undefined);
+        }
+    }
+
+    public deleteInterval(
+        serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage) {
+        const id = serializedInterval.properties?.[reservedIntervalIdKey];
+        if (id === undefined) {
+            // Delete all (start, end).
+            const start = serializedInterval.start;
+            const end = serializedInterval.end;
+            for (let interval = this.localCollection.findInterval(start, end);
+                 interval;
+                 interval = this.localCollection.findInterval(start, end)) {
+                this.deleteExistingInterval(interval, local, op);
+            }
+        }
+        else {
+            // Delete the interval with the given ID
+            const interval = this.localCollection.getIntervalById(id);
+            if (interval) {
+                this.deleteExistingInterval(interval, local, op);
+            }
+        }
+    }
+
+    public deleteIntervalById(id) {
+        const interval = this.localCollection.getIntervalById(id);
+        if (interval) {
+            this.deleteExistingInterval(interval, true, undefined);
+        }
+        return interval;
+    }
+
     private deleteExistingInterval(
         interval: TInterval,
-        local: boolean = true,
+        local: boolean,
         op?: ISequencedDocumentMessage,
     ) {
         // The given interval is known to exist in the collection.
@@ -811,35 +836,6 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
             }
         }
         this.emit("deleteInterval", interval, local, op);
-   }
-
-    public deleteInterval(
-        serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage) {
-        const id = serializedInterval.properties?.[reservedIntervalIdKey];
-        if (id === undefined) {
-            // Delete all (start, end)
-            this.delete(serializedInterval.start, serializedInterval.end, local, op);
-        }
-        else {
-            // Delete the interval with the given ID
-            this.deleteIntervalById(id, local, op);
-        }
-    }
-
-    public getIntervalById(id) {
-        return this.localCollection.getIntervalById(id);
-    }
-
-    public deleteIntervalById(
-        id,
-        local: boolean = true,
-        op?: ISequencedDocumentMessage,
-    ) {
-        const interval = this.localCollection.getIntervalById(id);
-        if (interval) {
-            this.deleteExistingInterval(interval, local, op);
-        }
-        return interval;
     }
 
     public serializeInternal() {
