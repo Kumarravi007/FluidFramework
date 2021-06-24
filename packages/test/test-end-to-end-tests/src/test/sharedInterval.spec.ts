@@ -63,25 +63,31 @@ function testIntervalOperations(intervalCollection: IntervalCollection<SequenceI
     let id;
 
     intervalArray[0] = intervalCollection.add(0, 0, IntervalType.SlideOnRemove);
-    if (typeof(intervalArray[0]?.getIntervalId) === "function") {
-        intervalArray[1] = intervalCollection.add(0, 0, IntervalType.SlideOnRemove);
-        assert.notStrictEqual(intervalArray[0], intervalArray[1]);
+    if (typeof(intervalArray[0]?.getIntervalId) !== "function") {
         intervalCollection.delete(0, 0);
-        id = intervalArray[0].getIntervalId();
-        assert.notStrictEqual(id, undefined);
-        if (id) {
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, undefined);
-        }
-        id = intervalArray[1].getIntervalId();
-        assert.notStrictEqual(id, undefined);
-        if (id) {
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, undefined);
-        }
-        intervalArray[0] = intervalCollection.add(0, 0, IntervalType.SlideOnRemove);
+        return;
     }
 
+    intervalArray[1] = intervalCollection.add(0, 0, IntervalType.SlideOnRemove);
+    assert.notStrictEqual(intervalArray[0], intervalArray[1], "Unique intervals not added");
+
+    id = intervalArray[0].getIntervalId();
+    assert.notStrictEqual(id, undefined, "ID not created");
+
+    intervalCollection.removeIntervalById(id);
+    interval = intervalCollection.getIntervalById(id);
+    assert.strictEqual(interval, undefined, "Interval not removed");
+
+    id = intervalArray[1].getIntervalId();
+    assert.notStrictEqual(id, undefined, "ID not created");
+    interval = intervalCollection.getIntervalById(id);
+    assert.notStrictEqual(interval, undefined, "Wrong interval removed?");
+
+    intervalCollection.removeIntervalById(id);
+    interval = intervalCollection.getIntervalById(id);
+    assert.strictEqual(interval, undefined, "Interval not removed");
+
+    intervalArray[0] = intervalCollection.add(0, 0, IntervalType.SlideOnRemove);
     intervalArray[1] = intervalCollection.add(0, 1, IntervalType.SlideOnRemove);
     intervalArray[2] = intervalCollection.add(0, 2, IntervalType.SlideOnRemove);
     intervalArray[3] = intervalCollection.add(1, 0, IntervalType.SlideOnRemove);
@@ -164,43 +170,35 @@ function testIntervalOperations(intervalCollection: IntervalCollection<SequenceI
     }
     assert.strictEqual(i, intervalArray.length, "Interval omitted from for...of iteration");
 
-    if (typeof(intervalArray[0]?.getIntervalId) === "function") {
-        id = intervalArray[0].getIntervalId();
-        assert.notStrictEqual(id, undefined, "Unique Id should have been assigned");
-        if (id !== undefined) {
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, intervalArray[0]);
-            interval = intervalCollection.removeIntervalById(id);
-            assert.strictEqual(interval, intervalArray[0]);
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, undefined);
-            interval = intervalCollection.removeIntervalById(id);
-            assert.strictEqual(interval, undefined);
-        }
-
-        id = intervalArray[intervalArray.length - 1].getIntervalId();
-        assert.notStrictEqual(id, undefined, "Unique Id should have been assigned");
-        if (id !== undefined) {
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, intervalArray[intervalArray.length - 1]);
-            interval = intervalCollection.removeIntervalById(id);
-            assert.strictEqual(interval, intervalArray[intervalArray.length - 1]);
-            interval = intervalCollection.getIntervalById(id);
-            assert.strictEqual(interval, undefined);
-            interval = intervalCollection.removeIntervalById(id);
-            assert.strictEqual(interval, undefined);
-        }
+    id = intervalArray[0].getIntervalId();
+    assert.notStrictEqual(id, undefined, "Unique Id should have been assigned");
+    if (id !== undefined) {
+        interval = intervalCollection.getIntervalById(id);
+        assert.strictEqual(interval, intervalArray[0]);
+        interval = intervalCollection.removeIntervalById(id);
+        assert.strictEqual(interval, intervalArray[0]);
+        interval = intervalCollection.getIntervalById(id);
+        assert.strictEqual(interval, undefined);
+        interval = intervalCollection.removeIntervalById(id);
+        assert.strictEqual(interval, undefined);
     }
 
-    intervalCollection.delete(0, 0);
-    intervalCollection.delete(0, 1);
-    intervalCollection.delete(0, 2);
-    intervalCollection.delete(1, 0);
-    intervalCollection.delete(1, 1);
-    intervalCollection.delete(1, 2);
-    intervalCollection.delete(2, 0);
-    intervalCollection.delete(2, 1);
-    intervalCollection.delete(2, 2);
+    id = intervalArray[intervalArray.length - 1].getIntervalId();
+    assert.notStrictEqual(id, undefined, "Unique Id should have been assigned");
+    if (id !== undefined) {
+        interval = intervalCollection.getIntervalById(id);
+        assert.strictEqual(interval, intervalArray[intervalArray.length - 1]);
+        interval = intervalCollection.removeIntervalById(id);
+        assert.strictEqual(interval, intervalArray[intervalArray.length - 1]);
+        interval = intervalCollection.getIntervalById(id);
+        assert.strictEqual(interval, undefined);
+        interval = intervalCollection.removeIntervalById(id);
+        assert.strictEqual(interval, undefined);
+    }
+
+    for (interval of intervalArray) {
+        intervalCollection.removeIntervalById(interval.getIntervalId());
+    }
 }
 
 describeFullCompat("SharedInterval", (getTestObjectProvider) => {
@@ -459,15 +457,22 @@ describeFullCompat("SharedInterval", (getTestObjectProvider) => {
                 assert.strictEqual(i, intervalArray.length, "Interval omitted from for...of iteration");
             }
 
-            intervals2.delete(0, 0);
-            intervals2.delete(0, 1);
-            intervals2.delete(0, 2);
-            intervals2.delete(1, 0);
-            intervals2.delete(1, 1);
-            intervals2.delete(1, 2);
-            intervals2.delete(2, 0);
-            intervals2.delete(2, 1);
-            intervals2.delete(2, 2);
+            if (typeof(intervalArray[0]?.getIntervalId) === "function") {
+                for (interval of intervalArray) {
+                    intervals2.removeIntervalById(interval.getIntervalId());
+                }
+            }
+            else {
+                intervals2.delete(0,0);
+                intervals2.delete(0,1);
+                intervals2.delete(0,2);
+                intervals2.delete(1,0);
+                intervals2.delete(1,1);
+                intervals2.delete(1,2);
+                intervals2.delete(2,0);
+                intervals2.delete(2,1);
+                intervals2.delete(2,2);
+            }
 
             await provider.ensureSynchronized();
 
@@ -544,7 +549,8 @@ describeFullCompat("SharedInterval", (getTestObjectProvider) => {
 
                 await provider.ensureSynchronized();
 
-                intervals2.delete(1, 1);
+                intervals2.removeIntervalById(id1);
+                intervals1.removeIntervalById(id2);
                 interval1 = intervals1.add(1, 1, IntervalType.SlideOnRemove);
                 id1 = interval1.getIntervalId();
 
@@ -563,7 +569,7 @@ describeFullCompat("SharedInterval", (getTestObjectProvider) => {
 
                 // Conflicting removes
                 intervals1.removeIntervalById(id1);
-                intervals2.delete(1, 1);
+                intervals2.removeIntervalById(id1);
 
                 await provider.ensureSynchronized();
 

@@ -435,10 +435,9 @@ export class LocalIntervalCollection<TInterval extends ISerializableInterval> {
         }
     }
 
-    public findInterval(start: number, end: number) {
-        const transientInterval: TInterval = this.helpers.create(
-            "transient", start, end, this.client, MergeTree.IntervalType.Transient);
-        return this.intervalTree.get(transientInterval);
+    // Create a non-unique ID for legacy intervals received over the wire without a unique ID.
+    public createLegacyId(start: number, end: number): string {
+        return `${start}-${end}`;
     }
 
     public previousInterval(pos: number) {
@@ -757,6 +756,17 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
     // TODO: error cases
     public addInternal(
         serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage): TInterval {
+        if (serializedInterval.properties?.[reservedIntervalIdKey] === undefined) {
+            // An interval came over the wire without an ID. Create a non-unique ID based on start and end.
+            serializedInterval.properties = MergeTree.addProperties(
+                serializedInterval.properties,
+                {
+                    [reservedIntervalIdKey]:
+                        this.localCollection.createLegacyId(serializedInterval.start, serializedInterval.end),
+                },
+            );
+        }
+
         const interval: TInterval = this.localCollection.addInterval(
             serializedInterval.start,
             serializedInterval.end,
@@ -780,33 +790,23 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         return interval;
     }
 
+    /**
+     * @deprecated - delete(start,end) will be removed in future.  Please use deleteIntervalById instead.
+     */
     public delete(start: number, end: number) {
-        for (let interval: TInterval | undefined = this.localCollection.findInterval(start, end);
-                interval;
-                interval = this.localCollection.findInterval(start, end)) {
-            this.deleteExistingInterval(interval, true, undefined);
-        }
+        return this.deleteIntervalById(this.localCollection.createLegacyId(start, end));
     }
 
     public deleteInterval(
         serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage) {
-        const id = serializedInterval.properties?.[reservedIntervalIdKey];
-        if (id === undefined) {
-            // Delete all (start, end).
-            const start = serializedInterval.start;
-            const end = serializedInterval.end;
-            for (let interval = this.localCollection.findInterval(start, end);
-                 interval;
-                 interval = this.localCollection.findInterval(start, end)) {
-                this.deleteExistingInterval(interval, local, op);
-            }
-        }
-        else {
-            // Delete the interval with the given ID
-            const interval = this.localCollection.getIntervalById(id);
-            if (interval) {
-                this.deleteExistingInterval(interval, local, op);
-            }
+        // If the op contains an interval without an ID, create a non-unique ID for it.
+        // This is the ID that was given to the interval if we were asked to add it.
+        const id =
+            serializedInterval.properties?.[reservedIntervalIdKey] ??
+            this.localCollection.createLegacyId(serializedInterval.start, serializedInterval.end);
+        const interval = this.localCollection.getIntervalById(id);
+        if (interval) {
+            this.deleteExistingInterval(interval, local, op);
         }
     }
 
