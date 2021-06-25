@@ -475,6 +475,19 @@ export class LocalIntervalCollection<TInterval extends ISerializableInterval> {
         return this.helpers.create(this.label, start, end, this.client, intervalType);
     }
 
+    public ensureSerializedId(serializedInterval: ISerializedInterval) {
+        if (serializedInterval.properties?.[reservedIntervalIdKey] === undefined) {
+            // An interval came over the wire without an ID. Create a non-unique ID based on start and end.
+            serializedInterval.properties = MergeTree.addProperties(
+                serializedInterval.properties,
+                {
+                    [reservedIntervalIdKey]:
+                        this.createLegacyId(serializedInterval.start, serializedInterval.end),
+                },
+            );
+        }
+    }
+
     // TODO: remove interval, handle duplicate intervals
     public addInterval(
         start: number,
@@ -677,6 +690,7 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
         this.localCollection = new LocalIntervalCollection<TInterval>(client, label, helpers);
         if (savedSerializedIntervals) {
             for (const serializedInterval of savedSerializedIntervals) {
+                this.localCollection.ensureSerializedId(serializedInterval);
                 this.localCollection.addInterval(
                     serializedInterval.start,
                     serializedInterval.end,
@@ -756,16 +770,7 @@ export class IntervalCollectionView<TInterval extends ISerializableInterval> ext
     // TODO: error cases
     public addInternal(
         serializedInterval: ISerializedInterval, local: boolean, op: ISequencedDocumentMessage): TInterval {
-        if (serializedInterval.properties?.[reservedIntervalIdKey] === undefined) {
-            // An interval came over the wire without an ID. Create a non-unique ID based on start and end.
-            serializedInterval.properties = MergeTree.addProperties(
-                serializedInterval.properties,
-                {
-                    [reservedIntervalIdKey]:
-                        this.localCollection.createLegacyId(serializedInterval.start, serializedInterval.end),
-                },
-            );
-        }
+        this.localCollection.ensureSerializedId(serializedInterval);
 
         const interval: TInterval = this.localCollection.addInterval(
             serializedInterval.start,
